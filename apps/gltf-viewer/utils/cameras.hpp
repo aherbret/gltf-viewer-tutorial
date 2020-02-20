@@ -143,7 +143,28 @@ private:
   glm::vec3 m_up;
 };
 
-class FirstPersonCameraController
+class CameraController
+{
+public:
+  ~CameraController() {};
+  virtual void setSpeed(float speed) { m_fSpeed = speed; };
+  virtual float getSpeed() const { return m_fSpeed; };
+  virtual void increaseSpeed(float delta) { m_fSpeed += delta; };
+  virtual const glm::vec3 &getWorldUpAxis() const { return m_worldUpAxis; }
+  virtual void setWorldUpAxis(const glm::vec3 &worldUpAxis) { m_worldUpAxis = worldUpAxis; }
+  virtual bool update(float elapsedTime) { return true; }
+  virtual const Camera &getCamera() const { return m_camera; }
+  virtual void setCamera(const Camera &camera) { m_camera = camera; }
+
+private:
+  float m_fSpeed = 0.f;
+  glm::vec3 m_worldUpAxis;
+
+  // Current camera
+  Camera m_camera;
+};
+
+class FirstPersonCameraController : public CameraController
 {
 public:
   FirstPersonCameraController(GLFWwindow *window, float speed = 1.f,
@@ -156,31 +177,31 @@ public:
   }
 
   // Controller attributes, if put in a GUI, should be adapted
-  void setSpeed(float speed) { m_fSpeed = speed; }
+  void setSpeed(float speed) override { m_fSpeed = speed; }
 
-  float getSpeed() const { return m_fSpeed; }
+  float getSpeed() const override { return m_fSpeed; }
 
-  void increaseSpeed(float delta)
+  void increaseSpeed(float delta) override
   {
     m_fSpeed += delta;
     m_fSpeed = glm::max(m_fSpeed, 0.f);
   }
 
-  const glm::vec3 &getWorldUpAxis() const { return m_worldUpAxis; }
+  const glm::vec3 &getWorldUpAxis() const override { return m_worldUpAxis; }
 
-  void setWorldUpAxis(const glm::vec3 &worldUpAxis)
+  void setWorldUpAxis(const glm::vec3 &worldUpAxis) override
   {
     m_worldUpAxis = worldUpAxis;
   }
 
   // Update the view matrix based on input events and elapsed time
   // Return true if the view matrix has been modified
-  bool update(float elapsedTime);
+  bool update(float elapsedTime) override;
 
   // Get the view matrix
-  const Camera &getCamera() const { return m_camera; }
+  const Camera &getCamera() const override { return m_camera; }
 
-  void setCamera(const Camera &camera) { m_camera = camera; }
+  void setCamera(const Camera &camera) override { m_camera = camera; }
 
 private:
   GLFWwindow *m_pWindow = nullptr;
@@ -195,8 +216,7 @@ private:
   Camera m_camera;
 };
 
-// todo Blender like camera
-class TrackballCameraController
+class TrackballCameraController : public CameraController
 {
 public:
   TrackballCameraController(GLFWwindow *window, float speed = 1.f,
@@ -209,31 +229,31 @@ public:
   }
 
   // Controller attributes, if put in a GUI, should be adapted
-  void setSpeed(float speed) { m_fSpeed = speed; }
+  void setSpeed(float speed) override { m_fSpeed = speed; }
 
-  float getSpeed() const { return m_fSpeed; }
+  float getSpeed() const override { return m_fSpeed; }
 
-  void increaseSpeed(float delta)
+  void increaseSpeed(float delta) override
   {
     m_fSpeed += delta;
     m_fSpeed = glm::max(m_fSpeed, 0.f);
   }
 
-  const glm::vec3 &getWorldUpAxis() const { return m_worldUpAxis; }
+  const glm::vec3 &getWorldUpAxis() const override { return m_worldUpAxis; }
 
-  void setWorldUpAxis(const glm::vec3 &worldUpAxis)
+  void setWorldUpAxis(const glm::vec3 &worldUpAxis) override
   {
     m_worldUpAxis = worldUpAxis;
   }
 
   // Update the view matrix based on input events and elapsed time
   // Return true if the view matrix has been modified
-  bool update(float elapsedTime);
+  bool update(float elapsedTime) override;
 
   // Get the view matrix
-  const Camera &getCamera() const { return m_camera; }
+  const Camera &getCamera() const override { return m_camera; }
 
-  void setCamera(const Camera &camera) { m_camera = camera; }
+  void setCamera(const Camera &camera) override { m_camera = camera; }
 
 private:
   GLFWwindow *m_pWindow = nullptr;

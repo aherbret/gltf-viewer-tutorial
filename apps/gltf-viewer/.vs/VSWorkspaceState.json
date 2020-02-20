@@ -1,7 +1,9 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\shaders",
+    "\\utils"
   ],
-  "SelectedNode": "\\ViewerApplication.cpp",
+  "SelectedNode": "\\utils\\cameras.cpp",
   "PreviewInSolutionExplorer": false
 }
