@@ -37,6 +37,11 @@ int ViewerApplication::run()
   const auto normalMatrixLocation =
       glGetUniformLocation(glslProgram.glId(), "uNormalMatrix");
 
+  const auto uLightDirectionLocation =
+      glGetUniformLocation(glslProgram.glId(), "uLightDirection");
+  const auto uLightIntensity =
+      glGetUniformLocation(glslProgram.glId(), "uLightIntensity");
+
   tinygltf::Model model;
   if (!loadGltfFile(model)) {
     return -1;
@@ -67,6 +72,10 @@ int ViewerApplication::run()
     cameraController->setCamera(Camera{eye, center, up});
   }
 
+  glm::vec3 lightDirection(1, 1, 1);
+  glm::vec3 lightIntensity(1, 1, 1);
+  bool lightFromCamera = false;
+
   const auto bufferObjects = createBufferObjects(model);
 
   std::vector<VaoRange> meshToVertexArrays;
@@ -84,60 +93,82 @@ int ViewerApplication::run()
 
     const auto viewMatrix = camera.getViewMatrix();
 
-    // The recursive function that should draw a node
-    // We use a std::function because a simple lambda cannot be recursive
-    const std::function<void(int, const glm::mat4 &)> drawNode =
-        [&](int nodeIdx, const glm::mat4 &parentMatrix) {
-          const auto &node = model.nodes[nodeIdx];
-          const glm::mat4 modelMatrix =
-              getLocalToWorldMatrix(node, parentMatrix);
+    if (uLightDirectionLocation >= 0) {
+      const auto lightDirectionInViewSpace =
+          glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+      glUniform3f(uLightDirectionLocation, lightDirectionInViewSpace[0],
+          lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+      if (lightFromCamera) {
+        glUniform3f(uLightDirectionLocation, 0, 0, 1);
+      } else {
+        const auto lightDirectionInViewSpace = glm::normalize(
+            glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+        glUniform3f(uLightDirectionLocation, lightDirectionInViewSpace[0],
+            lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+      }
+    }
 
-          // If the node references a mesh (a node can also reference a
-          // camera, or a light)
-          if (node.mesh >= 0) {
-            const auto mvMatrix =
-                viewMatrix * modelMatrix; // Also called localToCamera matrix
-            const auto mvpMatrix =
-                projMatrix * mvMatrix; // Also called localToScreen matrix
-            // Normal matrix is necessary to maintain normal vectors
-            // orthogonal to tangent vectors
-            // https://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
-            const auto normalMatrix = glm::transpose(glm::inverse(mvMatrix));
+    if (uLightIntensity >= 0) {
+      glUniform3f(uLightIntensity, lightIntensity[0], lightIntensity[1],
+          lightIntensity[2]);
+    }
 
-            glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE,
-                glm::value_ptr(mvpMatrix));
-            glUniformMatrix4fv(
-                modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(mvMatrix));
-            glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE,
-                glm::value_ptr(normalMatrix));
+      // The recursive function that should draw a node
+      // We use a std::function because a simple lambda cannot be recursive
+      const std::function<void(int, const glm::mat4 &)> drawNode =
+          [&](int nodeIdx, const glm::mat4 &parentMatrix) {
+            const auto &node = model.nodes[nodeIdx];
+            const glm::mat4 modelMatrix =
+                getLocalToWorldMatrix(node, parentMatrix);
 
-            const auto &mesh = model.meshes[node.mesh];
-            const auto &vaoRange = meshToVertexArrays[node.mesh];
-            for (size_t pIdx = 0; pIdx < mesh.primitives.size(); ++pIdx) {
-              const auto vao = vertexArrayObjects[vaoRange.begin + pIdx];
-              const auto &primitive = mesh.primitives[pIdx];
-              glBindVertexArray(vao);
-              if (primitive.indices >= 0) {
-                const auto &accessor = model.accessors[primitive.indices];
-                const auto &bufferView = model.bufferViews[accessor.bufferView];
-                const auto byteOffset =
-                    accessor.byteOffset + bufferView.byteOffset;
-                glDrawElements(primitive.mode, GLsizei(accessor.count),
-                    accessor.componentType, (const GLvoid *)byteOffset);
-              } else {
-                // Take first accessor to get the count
-                const auto accessorIdx = (*begin(primitive.attributes)).second;
-                const auto &accessor = model.accessors[accessorIdx];
-                glDrawArrays(primitive.mode, 0, GLsizei(accessor.count));
+            // If the node references a mesh (a node can also reference a
+            // camera, or a light)
+            if (node.mesh >= 0) {
+              const auto mvMatrix =
+                  viewMatrix * modelMatrix; // Also called localToCamera matrix
+              const auto mvpMatrix =
+                  projMatrix * mvMatrix; // Also called localToScreen matrix
+              // Normal matrix is necessary to maintain normal vectors
+              // orthogonal to tangent vectors
+              // https://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
+              const auto normalMatrix = glm::transpose(glm::inverse(mvMatrix));
+
+              glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE,
+                  glm::value_ptr(mvpMatrix));
+              glUniformMatrix4fv(modelViewMatrixLocation, 1, GL_FALSE,
+                  glm::value_ptr(mvMatrix));
+              glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE,
+                  glm::value_ptr(normalMatrix));
+
+              const auto &mesh = model.meshes[node.mesh];
+              const auto &vaoRange = meshToVertexArrays[node.mesh];
+              for (size_t pIdx = 0; pIdx < mesh.primitives.size(); ++pIdx) {
+                const auto vao = vertexArrayObjects[vaoRange.begin + pIdx];
+                const auto &primitive = mesh.primitives[pIdx];
+                glBindVertexArray(vao);
+                if (primitive.indices >= 0) {
+                  const auto &accessor = model.accessors[primitive.indices];
+                  const auto &bufferView =
+                      model.bufferViews[accessor.bufferView];
+                  const auto byteOffset =
+                      accessor.byteOffset + bufferView.byteOffset;
+                  glDrawElements(primitive.mode, GLsizei(accessor.count),
+                      accessor.componentType, (const GLvoid *)byteOffset);
+                } else {
+                  // Take first accessor to get the count
+                  const auto accessorIdx =
+                      (*begin(primitive.attributes)).second;
+                  const auto &accessor = model.accessors[accessorIdx];
+                  glDrawArrays(primitive.mode, 0, GLsizei(accessor.count));
+                }
               }
             }
-          }
 
-          // Draw children
-          for (const auto childNodeIdx : node.children) {
-            drawNode(childNodeIdx, modelMatrix);
-          }
-        };
+            // Draw children
+            for (const auto childNodeIdx : node.children) {
+              drawNode(childNodeIdx, modelMatrix);
+            }
+          };
 
     // Draw the scene referenced by gltf file
     if (model.defaultScene >= 0) {
@@ -223,6 +254,29 @@ int ViewerApplication::run()
           }
           cameraController->setCamera(currentCamera);
         }
+      }
+      if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static float lightTheta = 0.f;
+        static float lightPhi = 0.f;
+
+        if (ImGui::SliderFloat("theta", &lightTheta, 0, glm::pi<float>()) ||
+            ImGui::SliderFloat("phi", &lightPhi, 0, 2.f * glm::pi<float>())) {
+          const auto sinPhi = glm::sin(lightPhi);
+          const auto cosPhi = glm::cos(lightPhi);
+          const auto sinTheta = glm::sin(lightTheta);
+          const auto cosTheta = glm::cos(lightTheta);
+          lightDirection =
+              glm::vec3(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi);
+        }
+
+        static glm::vec3 lightColor(1.f, 1.f, 1.f);
+        static float lightIntensityFactor = 1.f;
+
+        if (ImGui::ColorEdit3("color", (float *)&lightColor) ||
+            ImGui::InputFloat("intensity", &lightIntensityFactor)) {
+          lightIntensity = lightColor * lightIntensityFactor;
+        }
+        ImGui::Checkbox("light from camera", &lightFromCamera);
       }
       ImGui::End();
     }
