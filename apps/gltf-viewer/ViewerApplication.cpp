@@ -76,6 +76,20 @@ int ViewerApplication::run()
   glm::vec3 lightIntensity(1, 1, 1);
   bool lightFromCamera = false;
 
+  std::vector<GLuint> textureObjects = createTextureObjects(model);
+
+  GLuint whiteTexture = 0;
+  glGenTextures(1, &whiteTexture);
+  glBindTexture(GL_TEXTURE_2D, whiteTexture);
+  float white[] = {1, 1, 1, 1};
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_FLOAT, white);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
   const auto bufferObjects = createBufferObjects(model);
 
   std::vector<VaoRange> meshToVertexArrays;
@@ -113,62 +127,60 @@ int ViewerApplication::run()
           lightIntensity[2]);
     }
 
-      // The recursive function that should draw a node
-      // We use a std::function because a simple lambda cannot be recursive
-      const std::function<void(int, const glm::mat4 &)> drawNode =
-          [&](int nodeIdx, const glm::mat4 &parentMatrix) {
-            const auto &node = model.nodes[nodeIdx];
-            const glm::mat4 modelMatrix =
-                getLocalToWorldMatrix(node, parentMatrix);
+    // The recursive function that should draw a node
+    // We use a std::function because a simple lambda cannot be recursive
+    const std::function<void(int, const glm::mat4 &)> drawNode =
+        [&](int nodeIdx, const glm::mat4 &parentMatrix) {
+          const auto &node = model.nodes[nodeIdx];
+          const glm::mat4 modelMatrix =
+              getLocalToWorldMatrix(node, parentMatrix);
 
-            // If the node references a mesh (a node can also reference a
-            // camera, or a light)
-            if (node.mesh >= 0) {
-              const auto mvMatrix =
-                  viewMatrix * modelMatrix; // Also called localToCamera matrix
-              const auto mvpMatrix =
-                  projMatrix * mvMatrix; // Also called localToScreen matrix
-              // Normal matrix is necessary to maintain normal vectors
-              // orthogonal to tangent vectors
-              // https://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
-              const auto normalMatrix = glm::transpose(glm::inverse(mvMatrix));
+          // If the node references a mesh (a node can also reference a
+          // camera, or a light)
+          if (node.mesh >= 0) {
+            const auto mvMatrix =
+                viewMatrix * modelMatrix; // Also called localToCamera matrix
+            const auto mvpMatrix =
+                projMatrix * mvMatrix; // Also called localToScreen matrix
+            // Normal matrix is necessary to maintain normal vectors
+            // orthogonal to tangent vectors
+            // https://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
+            const auto normalMatrix = glm::transpose(glm::inverse(mvMatrix));
 
-              glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE,
-                  glm::value_ptr(mvpMatrix));
-              glUniformMatrix4fv(modelViewMatrixLocation, 1, GL_FALSE,
-                  glm::value_ptr(mvMatrix));
-              glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE,
-                  glm::value_ptr(normalMatrix));
+            glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE,
+                glm::value_ptr(mvpMatrix));
+            glUniformMatrix4fv(
+                modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(mvMatrix));
+            glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE,
+                glm::value_ptr(normalMatrix));
 
-              const auto &mesh = model.meshes[node.mesh];
-              const auto &vaoRange = meshToVertexArrays[node.mesh];
-              for (size_t pIdx = 0; pIdx < mesh.primitives.size(); ++pIdx) {
-                const auto vao = vertexArrayObjects[vaoRange.begin + pIdx];
-                const auto &primitive = mesh.primitives[pIdx];
-                glBindVertexArray(vao);
-                if (primitive.indices >= 0) {
-                  const auto &accessor = model.accessors[primitive.indices];
-                  const auto &bufferView =
-                      model.bufferViews[accessor.bufferView];
-                  const auto byteOffset =
-                      accessor.byteOffset + bufferView.byteOffset;
-                  glDrawElements(primitive.mode, GLsizei(accessor.count),
-                      accessor.componentType, (const GLvoid *)byteOffset);
-                } else {
-                  // Take first accessor to get the count
-                  const auto accessorIdx =
-                      (*begin(primitive.attributes)).second;
-                  const auto &accessor = model.accessors[accessorIdx];
-                  glDrawArrays(primitive.mode, 0, GLsizei(accessor.count));
-                }
+            const auto &mesh = model.meshes[node.mesh];
+            const auto &vaoRange = meshToVertexArrays[node.mesh];
+            for (size_t pIdx = 0; pIdx < mesh.primitives.size(); ++pIdx) {
+              const auto vao = vertexArrayObjects[vaoRange.begin + pIdx];
+              const auto &primitive = mesh.primitives[pIdx];
+              glBindVertexArray(vao);
+              if (primitive.indices >= 0) {
+                const auto &accessor = model.accessors[primitive.indices];
+                const auto &bufferView = model.bufferViews[accessor.bufferView];
+                const auto byteOffset =
+                    accessor.byteOffset + bufferView.byteOffset;
+                glDrawElements(primitive.mode, GLsizei(accessor.count),
+                    accessor.componentType, (const GLvoid *)byteOffset);
+              } else {
+                // Take first accessor to get the count
+                const auto accessorIdx = (*begin(primitive.attributes)).second;
+                const auto &accessor = model.accessors[accessorIdx];
+                glDrawArrays(primitive.mode, 0, GLsizei(accessor.count));
               }
             }
+          }
 
-            // Draw children
-            for (const auto childNodeIdx : node.children) {
-              drawNode(childNodeIdx, modelMatrix);
-            }
-          };
+          // Draw children
+          for (const auto childNodeIdx : node.children) {
+            drawNode(childNodeIdx, modelMatrix);
+          }
+        };
 
     // Draw the scene referenced by gltf file
     if (model.defaultScene >= 0) {
@@ -494,4 +506,49 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
   glfwSetKeyCallback(m_GLFWHandle.window(), keyCallback);
 
   printGLVersion();
+}
+
+std::vector<GLuint> ViewerApplication::createTextureObjects(
+    const tinygltf::Model &model) const
+{
+  std::vector<GLuint> textureObjects(model.textures.size(), 0);
+
+  tinygltf::Sampler defaultSampler;
+  defaultSampler.minFilter = GL_LINEAR;
+  defaultSampler.magFilter = GL_LINEAR;
+  defaultSampler.wrapS = GL_REPEAT;
+  defaultSampler.wrapT = GL_REPEAT;
+  defaultSampler.wrapR = GL_REPEAT;
+
+  glActiveTexture(GL_TEXTURE0);
+
+  glGenTextures(GLsizei(model.textures.size()), textureObjects.data());
+  for (size_t i = 0; i < model.textures.size(); ++i) {
+    const auto &texture = model.textures[i];
+    assert(texture.source >= 0);
+    const auto &image = model.images[texture.source];
+
+    const auto &sampler =
+        texture.sampler >= 0 ? model.samplers[texture.sampler] : defaultSampler;
+    glBindTexture(GL_TEXTURE_2D, textureObjects[i]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0,
+        GL_RGBA, image.pixel_type, image.image.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+        sampler.minFilter != -1 ? sampler.minFilter : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+        sampler.magFilter != -1 ? sampler.magFilter : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampler.wrapS);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampler.wrapT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, sampler.wrapR);
+
+    if (sampler.minFilter == GL_NEAREST_MIPMAP_NEAREST ||
+        sampler.minFilter == GL_NEAREST_MIPMAP_LINEAR ||
+        sampler.minFilter == GL_LINEAR_MIPMAP_NEAREST ||
+        sampler.minFilter == GL_LINEAR_MIPMAP_LINEAR) {
+      glGenerateMipmap(GL_TEXTURE_2D);
+    }
+  }
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  return textureObjects;
 }

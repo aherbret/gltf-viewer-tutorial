@@ -29,6 +29,8 @@ private:
       const std::vector<GLuint> &bufferObjects,
       std::vector<VaoRange> &meshToVertexArrays);
 
+  std::vector<GLuint> createTextureObjects(const tinygltf::Model &model) const;
+
   GLsizei m_nWindowWidth = 1280;
   GLsizei m_nWindowHeight = 720;
 
