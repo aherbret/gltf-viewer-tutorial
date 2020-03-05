@@ -41,6 +41,9 @@ int ViewerApplication::run()
       glGetUniformLocation(glslProgram.glId(), "uLightDirection");
   const auto uLightIntensity =
       glGetUniformLocation(glslProgram.glId(), "uLightIntensity");
+  
+  const auto uBaseColorTexture =
+      glGetUniformLocation(glslProgram.glId(), "uBaseColorTexture");
 
   tinygltf::Model model;
   if (!loadGltfFile(model)) {
@@ -99,6 +102,33 @@ int ViewerApplication::run()
   // Setup OpenGL state for rendering
   glEnable(GL_DEPTH_TEST);
   glslProgram.use();
+
+  const auto bindMaterial = [&](const auto materialIndex) {
+    if (materialIndex >= 0) {
+      // only valid is materialIndex >= 0
+      const auto &material = model.materials[materialIndex];
+      const auto &pbrMetallicRoughness = material.pbrMetallicRoughness;
+      if (uBaseColorTexture >= 0) {
+        auto textureObject = whiteTexture;
+        if (pbrMetallicRoughness.baseColorTexture.index >= 0) {
+          const auto &texture =
+              model.textures[pbrMetallicRoughness.baseColorTexture.index];
+          if (texture.source >= 0) {
+            textureObject = textureObjects[texture.source];
+          }
+        }
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureObject);
+        glUniform1i(uBaseColorTexture, 0);
+      }
+    } else {
+      if (uBaseColorTexture >= 0) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, whiteTexture);
+        glUniform1i(uBaseColorTexture, 0);
+      }
+    }
+  };
 
   // Lambda function to draw the scene
   const auto drawScene = [&](const Camera &camera) {
@@ -159,6 +189,9 @@ int ViewerApplication::run()
             for (size_t pIdx = 0; pIdx < mesh.primitives.size(); ++pIdx) {
               const auto vao = vertexArrayObjects[vaoRange.begin + pIdx];
               const auto &primitive = mesh.primitives[pIdx];
+
+              bindMaterial(primitive.material);
+
               glBindVertexArray(vao);
               if (primitive.indices >= 0) {
                 const auto &accessor = model.accessors[primitive.indices];
