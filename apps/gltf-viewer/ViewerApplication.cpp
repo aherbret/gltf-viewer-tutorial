@@ -55,8 +55,12 @@ int ViewerApplication::run()
   const auto uRoughnessFactor =
       glGetUniformLocation(glslProgram.glId(), "uRoughnessFactor");
 
+  const auto uEmissiveTexture =
+      glGetUniformLocation(glslProgram.glId(), "uEmissiveTexture");
+  const auto uEmissiveFactor =
+      glGetUniformLocation(glslProgram.glId(), "uEmissiveFactor");
 
-      tinygltf::Model model;
+  tinygltf::Model model;
   if (!loadGltfFile(model)) {
     return -1;
   }
@@ -118,6 +122,8 @@ int ViewerApplication::run()
     if (materialIndex >= 0) {
       const auto &material = model.materials[materialIndex];
       const auto &pbrMetallicRoughness = material.pbrMetallicRoughness;
+      const auto &emissiveTex = material.emissiveTexture;
+      const auto &emissiveFact = material.emissiveFactor;
       if (uBaseColorFactor >= 0) {
         glUniform4f(uBaseColorFactor,
             (float)pbrMetallicRoughness.baseColorFactor[0],
@@ -134,7 +140,6 @@ int ViewerApplication::run()
             textureObject = textureObjects[texture.source];
           }
         }
-
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureObject);
         glUniform1i(uBaseColorTexture, 0);
@@ -157,10 +162,26 @@ int ViewerApplication::run()
             textureObject = textureObjects[texture.source];
           }
         }
-
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textureObject);
         glUniform1i(uMetallicRoughnessTexture, 1);
+      }
+      if (uEmissiveFactor >= 0) {
+        glUniform3f(uEmissiveFactor, (float)emissiveFact[0],
+            (float)emissiveFact[1], (float)emissiveFact[2]);
+      }
+      if (uEmissiveTexture > 0) {
+        auto textureObject = 0u;
+        if (emissiveTex.index >= 0) {
+          const auto &texture =
+              model.textures[emissiveTex.index];
+          if (texture.source >= 0) {
+            textureObject = textureObjects[texture.source];
+          }
+        }
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, textureObject);
+        glUniform1i(uEmissiveTexture, 2);
       }
     } else {
       // Apply default material
@@ -185,6 +206,14 @@ int ViewerApplication::run()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, 0);
         glUniform1i(uMetallicRoughnessTexture, 1);
+      }
+      if (uEmissiveFactor >= 0) {
+        glUniform3f(uEmissiveFactor, 1, 1, 1);
+      }
+      if (uEmissiveTexture > 0) {
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glUniform1i(uEmissiveTexture, 2);
       }
     }
   };
